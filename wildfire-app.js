@@ -838,15 +838,19 @@ function params() {
 
 function spreadProb(dx, dy, fuelVal, p) {
   if (fuelVal <= 0) return 0;
+  // Wind "from" direction -> "to" direction (where flames push).
   const dirRad = (p.windDir + 180) * Math.PI / 180;
   const wx = Math.sin(dirRad), wy = -Math.cos(dirRad);
   const len = Math.sqrt(dx*dx + dy*dy) || 1;
   const nx = dx / len, ny = dy / len;
-  const align = nx*wx + ny*wy;
-  const wf = 1 + Math.max(0, align) * (p.windSpeed / 20);
-  const mf = Math.max(0.15, 1 - (p.moisture - 3) / 28);
-  const sf = 1 + p.slope * 0.35 * Math.max(0, align);
-  return Math.min(0.98, 0.18 * fuelVal * wf * mf * sf);
+  const align = nx*wx + ny*wy;                              // -1..+1, +1 = downwind
+  // Wind factor: downwind strongly boosted, upwind gets a floor so cross-wind
+  // backing fire still creeps. Units: wind_mph / 12 (was /20).
+  const wf = 1 + Math.max(0, align) * (p.windSpeed / 12) + Math.max(0, -align) * 0.15;
+  const mf = Math.max(0.20, 1 - (p.moisture - 3) / 25);
+  const sf = 1 + p.slope * 0.45 * Math.max(0, align);
+  // Base rate bumped 0.18 -> 0.26 so light-fuel ignitions reliably catch.
+  return Math.min(0.98, 0.26 * fuelVal * wf * mf * sf);
 }
 
 function step() {
@@ -915,17 +919,25 @@ function computeStats() {
 }
 
 function estLoss(s) {
-  // Base home value from regional median, scaled by parcel acreage (lot premium).
   const acres = parcelBounds ? estimateAcres(parcelBounds) : 1.0;
   const lotFactor = 1 + Math.min(0.6, (acres - 0.25) * 0.08);
   const home = Math.round(LOC_CONTEXT.homeValueMedian * Math.max(0.75, lotFactor));
   const contents = Math.round(home * 0.25);
   const outbldg = Math.round(home * 0.06 + 5000 * Math.max(0, acres - 0.5));
-  // Regional fire-risk multiplier influences expected damage severity.
-  const regMult = LOC_CONTEXT.regionalFireRisk;
+  const regMult = LOC_CONTEXT.regionalFireRisk || 1.0;
+  // Full structural loss
   if (s.structBurned) return home + contents + outbldg;
-  const damage = Math.min(1, s.flameLen/20) * s.burnedPct * regMult;
-  return Math.round(home * 0.35 * damage + contents * 0.4 * damage);
+  // Partial damage: outbuildings, landscaping, smoke/heat damage.
+  // Scales with proportion burned, flame length, and regional severity.
+  // Uses sqrt of burnedPct so even a 10% burn produces a visible loss number.
+  const intensity = Math.min(1, s.flameLen / 15);
+  const extent = Math.sqrt(Math.max(0, s.burnedPct));
+  const damage = intensity * extent * regMult;
+  const landscape = Math.round(5000 * acres * damage);       // trees, irrigation, fences
+  const outbldgLoss = Math.round(outbldg * damage * 0.7);    // sheds, outbuildings
+  const smokeContents = Math.round(contents * 0.08 * damage);// smoke infiltration
+  const homeExterior = Math.round(home * 0.05 * damage);     // siding, paint, screens
+  return landscape + outbldgLoss + smokeContents + homeExterior;
 }
 
 function fmt$(n) {
@@ -1082,6 +1094,26 @@ function defaultIgnition() {
   return snap || [Math.floor(COLS * 0.2), Math.floor(ROWS * 0.5)];
 }
 
+// Light a small cluster around (ox, oy) so fires reliably catch. Anchor
+// cell is always ignited; neighbors within radius ignite only if flammable.
+function igniteCluster(ox, oy, radius) {
+  if (!grid) return;
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const x = ox + dx, y = oy + dy;
+      if (x < 0 || x >= COLS || y < 0 || y >= ROWS) continue;
+      if (dx*dx + dy*dy > radius*radius) continue;
+      const cell = grid[y][x];
+      if (!cell || !cell.fuel) continue;
+      // Always light the anchor; for neighbors require flammable fuel.
+      if ((dx === 0 && dy === 0) || cell.fuel.fuel > 0) {
+        cell.state = STATE.BURNING;
+        cell.burnClock = 0;
+      }
+    }
+  }
+}
+
 // One-click Ignite: works from any state. No prior map-click required.
 // If no parcel exists yet, drops one on the current map center so the demo
 // never dead-ends on "search first."
@@ -1125,7 +1157,9 @@ document.getElementById('fab-ignite').addEventListener('click', () => {
     return;
   }
 
-  c.state = STATE.BURNING;
+  // Ignite a small cluster (radius 2 = ~13 cells) so a bad RNG roll on
+  // one seed doesn't let the fire die instantly. Skip roads/homes/cleared.
+  igniteCluster(ignitionX, ignitionY, 2);
   running = true;
   document.body.classList.add('simulating');
   lastFrame = 0; accum = 0;
@@ -1195,11 +1229,14 @@ function loop(ts) {
       if (grid[y][x].state === STATE.BURNING) { any = true; break; }
     }
   }
-  if (!any && tickCount > 5) {
+  if (!any && tickCount > 25) {
     running = false;
     document.body.classList.remove('simulating');
-    document.getElementById('fab-pause').innerHTML = '\u25B6 Resume';
-    setStatus('Simulation complete. Review your risk level and mitigation options \u2192');
+    const pb = document.getElementById('fab-pause');
+    if (pb) pb.innerHTML = '\u25B6 Resume';
+    const ib = document.getElementById('fab-ignite');
+    if (ib) ib.innerHTML = '\uD83D\uDD04 Run Again';
+    setStatus('<b>Simulation complete.</b> Review your risk level, estimated loss, and mitigation options \u2192');
     updatePanels();
     requestAnimationFrame(idleLoop);
     return;
