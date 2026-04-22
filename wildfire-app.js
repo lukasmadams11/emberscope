@@ -526,12 +526,21 @@ const octx = overlay.getContext('2d');
 const COLS = 120, ROWS = 80;
 
 const FUEL = {
-  NONE:   { id: 0, base: '#3d3a33', fuel: 0.00 },
-  GRASS:  { id: 1, base: '#6a8f4d', fuel: 0.35 },
-  SHRUB:  { id: 2, base: '#3f6a38', fuel: 0.65 },
-  TREE:   { id: 3, base: '#1f3a1a', fuel: 0.85 },
-  ROAD:   { id: 4, base: '#8c847a', fuel: 0.00 },
-  STRUCT: { id: 5, base: '#b79b7a', fuel: 0.50 }
+  // Each fuel also carries a burn-color family so flames look different on
+  // grass vs. canopy vs. a structure.
+  // burn = [start RGB, peak RGB, ember RGB] — used by burningColor().
+  NONE:   { id: 0, base: '#d9cfa4', fuel: 0.00,
+            burn: [[255,235,140],[255,180,60],[180,120,50]] },       // tan cleared
+  GRASS:  { id: 1, base: '#b4c56a', fuel: 0.35,
+            burn: [[255,240,130],[255,170,40],[200, 80, 20]] },      // bright grass → yellow flame
+  SHRUB:  { id: 2, base: '#6b8a3a', fuel: 0.65,
+            burn: [[255,205, 90],[240,110, 30],[170, 40, 20]] },     // chaparral → orange flame
+  TREE:   { id: 3, base: '#214d2a', fuel: 0.85,
+            burn: [[255,180, 60],[220, 70, 20],[130, 20, 15]] },     // canopy → deep orange/crimson
+  ROAD:   { id: 4, base: '#8b6a52', fuel: 0.00,
+            burn: [[120,120,120],[90,90,90],[50,50,50]] },           // asphalt doesn't really burn
+  STRUCT: { id: 5, base: '#6f94c6', fuel: 0.55,
+            burn: [[255,120,200],[210, 40, 80],[120, 20, 40]] }      // homes → pink/magenta signal
 };
 const STATE = { UNBURNED:0, IGNITING:1, BURNING:2, BURNED:4 };
 
@@ -666,28 +675,24 @@ function drawWindPreview(ctx) {
 }
 
 // Interpolated color for burning cells using sub-tick progress.
+// Each fuel type has its own burn palette so the viewer can instantly tell
+// a grass fire from a canopy crown fire from a home on fire.
 function burningColor(c) {
   const t = Math.min(1, (c.burnClock + renderProgress) / 6);
-  // Smooth gradient yellow -> orange -> deep red
-  const stops = [
-    [0.00, [255, 220,  90]],
-    [0.40, [255, 170,  50]],
-    [0.75, [245, 100,  30]],
-    [1.00, [180,  45,  25]]
-  ];
-  let a = stops[0], b = stops[stops.length - 1];
-  for (let i = 0; i < stops.length - 1; i++) {
-    if (t >= stops[i][0] && t <= stops[i+1][0]) { a = stops[i]; b = stops[i+1]; break; }
-  }
-  const span = (b[0] - a[0]) || 1;
-  const f = (t - a[0]) / span;
-  const r = Math.round(a[1][0] + (b[1][0] - a[1][0]) * f);
-  const g = Math.round(a[1][1] + (b[1][1] - a[1][1]) * f);
-  const bl = Math.round(a[1][2] + (b[1][2] - a[1][2]) * f);
+  const palette = (c.fuel && c.fuel.burn) || [[255,220,90],[245,100,30],[180,45,25]];
+  // 3-stop gradient: [young flame] -> [peak] -> [ember/char]
+  let a, b, f;
+  if (t < 0.5) { a = palette[0]; b = palette[1]; f = t / 0.5; }
+  else         { a = palette[1]; b = palette[2]; f = (t - 0.5) / 0.5; }
+  const r  = Math.round(a[0] + (b[0] - a[0]) * f);
+  const g  = Math.round(a[1] + (b[1] - a[1]) * f);
+  const bl = Math.round(a[2] + (b[2] - a[2]) * f);
   return 'rgb(' + r + ',' + g + ',' + bl + ')';
 }
 
 // Soft glow pass around burning cells on a second overlay context.
+// Glow color & intensity depends on what's burning: homes get a hot pink/red
+// halo, tree canopy gets a deep orange halo, grass gets a bright yellow halo.
 function drawBurningGlow(ctx) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
@@ -697,10 +702,24 @@ function drawBurningGlow(ctx) {
       if (c.state !== STATE.BURNING) continue;
       const t = Math.min(1, (c.burnClock + renderProgress) / 6);
       const intensity = (1 - t * 0.55);
-      const radius = 2.5 + intensity * 1.8 + Math.sin((tickCount + renderProgress + x*0.21 + y*0.17) * 2.3) * 0.35;
+
+      // Per-fuel glow: big bright halos for canopy & structures, tighter for grass.
+      let inner, outer, radiusMult;
+      if (c.fuel === FUEL.STRUCT) {
+        inner = 'rgba(255,120,200,'; outer = 'rgba(210,40,80,0)'; radiusMult = 1.35;
+      } else if (c.fuel === FUEL.TREE) {
+        inner = 'rgba(255,150,60,';  outer = 'rgba(220,70,20,0)'; radiusMult = 1.20;
+      } else if (c.fuel === FUEL.SHRUB) {
+        inner = 'rgba(255,190,90,';  outer = 'rgba(240,110,30,0)'; radiusMult = 1.00;
+      } else {
+        inner = 'rgba(255,225,110,'; outer = 'rgba(255,170,40,0)'; radiusMult = 0.85;
+      }
+
+      const radius = (2.5 + intensity * 1.8 +
+        Math.sin((tickCount + renderProgress + x*0.21 + y*0.17) * 2.3) * 0.35) * radiusMult;
       const grd = ctx.createRadialGradient(x + 0.5, y + 0.5, 0, x + 0.5, y + 0.5, radius);
-      grd.addColorStop(0, 'rgba(255,180,80,' + (0.38 * intensity).toFixed(3) + ')');
-      grd.addColorStop(1, 'rgba(255,100,30,0)');
+      grd.addColorStop(0, inner + (0.42 * intensity).toFixed(3) + ')');
+      grd.addColorStop(1, outer);
       ctx.fillStyle = grd;
       ctx.beginPath();
       ctx.arc(x + 0.5, y + 0.5, radius, 0, Math.PI * 2);
@@ -729,10 +748,19 @@ function drawOverlay() {
     for (let x = 0; x < COLS; x++) {
       const c = grid[y][x];
       if (c.state === STATE.UNBURNED) {
-        if (c.fuel === FUEL.STRUCT) { octx.fillStyle = c.fuel.base; octx.fillRect(x, y, 1, 1); continue; }
-        if (c.fuel === FUEL.ROAD)   { octx.fillStyle = 'rgba(140,132,122,0.55)'; octx.fillRect(x, y, 1, 1); continue; }
-        if (c.fuel === FUEL.NONE)   { continue; }
-        const alpha = c.fuel.fuel * 0.55;
+        // Distinct per-fuel paint so users can tell grass / shrub / canopy / home apart
+        // even before the fire starts.
+        if (c.fuel === FUEL.STRUCT) {
+          // Solid home: blue-gray roof with a subtle ridge highlight
+          octx.fillStyle = 'rgba(111,148,198,0.95)';
+          octx.fillRect(x, y, 1, 1);
+          continue;
+        }
+        if (c.fuel === FUEL.ROAD)   { octx.fillStyle = 'rgba(139,106,82,0.75)'; octx.fillRect(x, y, 1, 1); continue; }
+        if (c.fuel === FUEL.NONE)   { octx.fillStyle = 'rgba(217,207,164,0.40)'; octx.fillRect(x, y, 1, 1); continue; }
+        // Vegetation: alpha scales with fuel load so canopy reads darker/greener
+        // than grass even through satellite tiles.
+        const alpha = 0.45 + c.fuel.fuel * 0.40;     // 0.59 grass … 0.79 tree
         const hex = c.fuel.base;
         const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
         octx.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha.toFixed(2) + ')';
@@ -744,8 +772,9 @@ function drawOverlay() {
     }
   }
 
-  octx.strokeStyle = '#ffd37a';
-  octx.lineWidth = 0.8;
+  // Home outline: warm coral so it stands out from the blue structure fill
+  octx.strokeStyle = '#ff9a3d';
+  octx.lineWidth = 0.9;
   octx.strokeRect(structX - 4.5, structY - 3.5, 9, 7);
 
   // Fire glow pass (only when cells are burning)
