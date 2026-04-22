@@ -39,6 +39,12 @@ document.querySelectorAll('.basemap-switch button').forEach(btn =>
   btn.addEventListener('click', () => switchBasemap(btn.dataset.b))
 );
 
+/* ---------- Status banner (shown over the map) ---------- */
+function setStatus(html) {
+  const el = document.getElementById('map-status');
+  if (el) el.innerHTML = html;
+}
+
 /* ---------- Address search (Nominatim) ---------- */
 const searchInput = document.getElementById('search');
 const searchResults = document.getElementById('search-results');
