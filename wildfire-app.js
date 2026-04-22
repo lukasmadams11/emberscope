@@ -999,9 +999,17 @@ function updatePanels() {
 document.getElementById('wind-dir').addEventListener('input', e => {
   const d = parseInt(e.target.value, 10);
   const labels = ['N','NE','E','SE','S','SW','W','NW'];
-  const cardinal = labels[Math.round(d/45) % 8];
-  document.getElementById('wind-dir-lbl').textContent = cardinal + ' origin (' + d + '°)';
-  document.getElementById('compass-needle').style.transform = 'translate(-50%, -100%) rotate(' + d + 'deg)';
+  const fromCard = labels[Math.round(d/45) % 8];
+  const toCard   = labels[Math.round(((d + 180) % 360)/45) % 8];
+  // Wind direction is the direction it's coming FROM (meteorological convention).
+  // Label shows both the origin and where the fire will push.
+  document.getElementById('wind-dir-lbl').textContent =
+    'From ' + fromCard + ' \u2192 blowing ' + toCard + ' (' + d + '\u00B0)';
+  // Needle points in the direction the wind is BLOWING TO, which is also where
+  // the fire will spread. That's what a homeowner actually cares about.
+  const blowTo = (d + 180) % 360;
+  document.getElementById('compass-needle').style.transform =
+    'translate(-50%, -100%) rotate(' + blowTo + 'deg)';
   updatePanels();
 });
 document.getElementById('wind-speed').addEventListener('input', e => {
@@ -1040,16 +1048,62 @@ document.getElementById('view-pro').addEventListener('click', () => {
   document.getElementById('view-home').classList.remove('active');
 });
 
+// Pick the closest cell with flammable fuel to (sx,sy). Used so clicks on roads
+// or the structure still produce a sensible ignition point instead of a dead click.
+function nearestFlammable(sx, sy) {
+  let best = null, bestD = Infinity;
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const c = grid[y][x];
+      if (!c || !c.fuel || c.fuel.fuel <= 0) continue;
+      const d = (x - sx) * (x - sx) + (y - sy) * (y - sy);
+      if (d < bestD) { bestD = d; best = [x, y]; }
+    }
+  }
+  return best;
+}
+
+// Default ignition: on the upwind edge of the parcel so the fire runs across
+// the property and the user actually sees spread (not a dead-end at the corner).
+function defaultIgnition() {
+  const p = params();
+  // Wind direction is "from" — upwind origin is on that side.
+  const rad = p.windDir * Math.PI / 180;
+  const offX = Math.sin(rad), offY = -Math.cos(rad);
+  const cx = Math.floor(COLS * 0.5 + offX * COLS * 0.38);
+  const cy = Math.floor(ROWS * 0.5 + offY * ROWS * 0.38);
+  const snap = nearestFlammable(cx, cy);
+  return snap || [Math.floor(COLS * 0.2), Math.floor(ROWS * 0.5)];
+}
+
 document.getElementById('fab-ignite').addEventListener('click', () => {
-  if (!grid) return;
-  if (ignitionX == null) { setStatus('Click somewhere inside the orange box to mark an ignition point first.'); return; }
+  if (!grid) {
+    setStatus('Search for an address first so we can place your parcel.');
+    return;
+  }
+  // No ignition point clicked? Pick one automatically on the upwind edge.
+  if (ignitionX == null) {
+    const ig = defaultIgnition();
+    ignitionX = ig[0]; ignitionY = ig[1];
+  } else {
+    // User clicked a road / home / cleared cell — snap to nearest flammable.
+    const c0 = grid[ignitionY][ignitionX];
+    if (!c0 || !c0.fuel || c0.fuel.fuel <= 0) {
+      const snap = nearestFlammable(ignitionX, ignitionY);
+      if (snap) { ignitionX = snap[0]; ignitionY = snap[1]; }
+    }
+  }
   const c = grid[ignitionY][ignitionX];
-  if (c.fuel.fuel <= 0) { setStatus('Ignition point has no fuel — click on a vegetated area (greener tint).'); return; }
+  if (!c || !c.fuel || c.fuel.fuel <= 0) {
+    setStatus('No flammable fuel on this parcel to ignite. Try a different location.');
+    return;
+  }
   c.state = STATE.BURNING;
   running = true;
   document.body.classList.add('simulating');
   lastFrame = 0; accum = 0;
-  setStatus('<b>🔥 Fire is spreading.</b> Watch flames propagate across your parcel.');
+  setStatus('<b>\uD83D\uDD25 Fire is spreading.</b> Watch flames propagate across your parcel.');
+  drawOverlay();
   loop();
 });
 document.getElementById('fab-pause').addEventListener('click', () => {
@@ -1057,23 +1111,22 @@ document.getElementById('fab-pause').addEventListener('click', () => {
   document.getElementById('fab-pause').innerHTML = running ? '⏸ Pause' : '▶ Resume';
   if (running) loop();
 });
+
 document.getElementById('fab-reset').addEventListener('click', () => {
   running = false;
-  if (grid) for (let y=0;y<ROWS;y++) for (let x=0;x<COLS;x++) {
+  if (grid) for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
     grid[y][x].state = STATE.UNBURNED; grid[y][x].burnClock = 0;
   }
+  ignitionX = null; ignitionY = null;
   tickCount = 0; lastStructIgnitionTick = -1;
-  document.getElementById('fab-pause').innerHTML = '⏸ Pause';
-  setStatus('Simulation reset. Click the map to set a new ignition, then press Ignite Fire.');
-  drawOverlay(); updatePanels();
+  running = false;
+  document.body.classList.remove('simulating');
+  document.getElementById('fab-pause').innerHTML = '\u23F8 Pause';
+  setStatus('Simulation reset. Click the map to set a new ignition, then press Ignite Fire (or just press Ignite and we\u2019ll pick an upwind spot for you).');
+  drawOverlay();
+  updatePanels();
+  requestAnimationFrame(idleLoop);
 });
-document.getElementById('fab-place').addEventListener('click', () => {
-  const c = map.getCenter();
-  placeDefaultParcel(c.lat, c.lng);
-  setStatus('<b>Step 2.</b> Drag handles to reshape your parcel. Then click inside it to mark ignition.');
-});
-
-function setStatus(html) { document.getElementById('map-status').innerHTML = html; }
 
 /* ---------- Loop ---------- */
 let lastFrame = 0, accum = 0;

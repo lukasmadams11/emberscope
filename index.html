@@ -415,28 +415,39 @@
   body.view-homeowner .homeowner-only { display: block; }
 
   .compass {
-    width: 60px; height: 60px; border-radius: 50%;
+    width: 72px; height: 72px; border-radius: 50%;
     background: radial-gradient(circle at 50% 50%, #ffffff 0%, var(--panel-2) 100%);
     border: 1px solid var(--border-strong);
     position: relative; margin: 6px auto 0;
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
   }
-  .compass::before {
-    content: "N"; position: absolute; top: 3px; left: 50%;
-    transform: translateX(-50%); font-size: 9px; color: var(--muted); font-weight: 700;
+  .compass .lbl-n, .compass .lbl-e, .compass .lbl-s, .compass .lbl-w {
+    position: absolute; font-size: 10px; color: var(--muted); font-weight: 700;
   }
+  .compass .lbl-n { top: 3px; left: 50%; transform: translateX(-50%); color: var(--accent); }
+  .compass .lbl-s { bottom: 3px; left: 50%; transform: translateX(-50%); }
+  .compass .lbl-e { right: 4px; top: 50%; transform: translateY(-50%); }
+  .compass .lbl-w { left: 4px;  top: 50%; transform: translateY(-50%); }
   .compass .needle {
     position: absolute; left: 50%; top: 50%;
-    width: 2px; height: 22px;
+    width: 3px; height: 26px;
     background: linear-gradient(to top, transparent, var(--accent));
     transform-origin: bottom center;
-    transform: translate(-50%, -100%) rotate(0deg);
-    transition: transform 0.2s;
+    /* Rotated by JS: arrow points where the wind is BLOWING TO (fire spread direction). */
+    transform: translate(-50%, -100%) rotate(180deg);
+    transition: transform 0.25s ease-out;
   }
   .compass .needle::before {
-    content: ""; position: absolute; top: -5px; left: -3px;
-    width: 8px; height: 8px; background: var(--accent);
+    content: ""; position: absolute; top: -6px; left: -3.5px;
+    width: 10px; height: 10px; background: var(--accent);
     clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    filter: drop-shadow(0 1px 2px rgba(232,93,0,0.4));
+  }
+  /* Small dot at the center showing where wind originates from */
+  .compass::after {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: 6px; height: 6px; background: var(--text-dim); border-radius: 50%;
+    transform: translate(-50%, -50%);
   }
 
   .advanced-toggle {
@@ -612,7 +623,7 @@
       <div class="field">
         <label>Wind direction <b id="wind-dir-lbl">W origin (270°)</b></label>
         <input type="range" id="wind-dir" min="0" max="359" value="270" />
-        <div class="compass"><div class="needle" id="compass-needle"></div></div>
+        <div class="compass"><span class="lbl-n">N</span><span class="lbl-e">E</span><span class="lbl-s">S</span><span class="lbl-w">W</span><div class="needle" id="compass-needle"></div></div>
       </div>
       <div class="field">
         <label>Wind speed <b id="wind-speed-lbl">18 mph</b></label>
