@@ -403,7 +403,7 @@ function placeDefaultParcel(lat, lon) {
   const dLon = 0.00055 / Math.cos(lat * Math.PI / 180);
   const b = L.latLngBounds([lat - dLat, lon - dLon], [lat + dLat, lon + dLon]);
   setParcel(b);
-  ['fab-pause','fab-reset'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
+  ['fab-place','fab-ignite','fab-pause','fab-reset'].forEach(id => document.getElementById(id).disabled = false);
   fetchLocationContext(lat, lon).then(() => {
     document.getElementById('parcel-meta').textContent =
       '~' + estimateAcres(parcelBounds).toFixed(2) + ' ac · ' +
@@ -1082,37 +1082,17 @@ function defaultIgnition() {
   return snap || [Math.floor(COLS * 0.2), Math.floor(ROWS * 0.5)];
 }
 
-// One-click Ignite: works from any state. No prior map-click required.
-// If no parcel exists yet, drops one on the current map center so the demo
-// never dead-ends on "search first."
 document.getElementById('fab-ignite').addEventListener('click', () => {
-  const igniteBtn = document.getElementById('fab-ignite');
-
-  // Already burning or finished? Treat the click as "restart" — clear + relight.
-  if (running || (grid && gridHasBurning())) {
-    resetSim(/*silent=*/true);
-  }
-
-  // No parcel yet? Drop one on whatever the user is looking at.
   if (!grid) {
-    const center = (typeof map !== 'undefined' && map && map.getCenter) ? map.getCenter() : null;
-    if (center) {
-      placeDefaultParcel(center.lat, center.lng);
-    } else {
-      setStatus('Map not ready yet — give it a moment and try again.');
-      return;
-    }
-  }
-  if (!grid) {
-    setStatus('Could not place a parcel. Try searching an address above.');
+    setStatus('Search for an address first so we can place your parcel.');
     return;
   }
-
-  // Always auto-pick ignition on the upwind edge; snap off roads/homes.
+  // No ignition point clicked? Pick one automatically on the upwind edge.
   if (ignitionX == null) {
     const ig = defaultIgnition();
     ignitionX = ig[0]; ignitionY = ig[1];
   } else {
+    // User clicked a road / home / cleared cell — snap to nearest flammable.
     const c0 = grid[ignitionY][ignitionX];
     if (!c0 || !c0.fuel || c0.fuel.fuel <= 0) {
       const snap = nearestFlammable(ignitionX, ignitionY);
@@ -1121,57 +1101,38 @@ document.getElementById('fab-ignite').addEventListener('click', () => {
   }
   const c = grid[ignitionY][ignitionX];
   if (!c || !c.fuel || c.fuel.fuel <= 0) {
-    setStatus('This parcel has no flammable fuel (all road/cleared). Move the parcel onto brush or trees and try again.');
+    setStatus('No flammable fuel on this parcel to ignite. Try a different location.');
     return;
   }
-
   c.state = STATE.BURNING;
   running = true;
   document.body.classList.add('simulating');
   lastFrame = 0; accum = 0;
-  const pauseBtn = document.getElementById('fab-pause');
-  const resetBtn = document.getElementById('fab-reset');
-  if (pauseBtn) { pauseBtn.disabled = false; pauseBtn.innerHTML = '⏸ Pause'; }
-  if (resetBtn) resetBtn.disabled = false;
-  igniteBtn.innerHTML = '🔄 Restart';
-  setStatus('<b>🔥 Fire is spreading.</b> Flames propagate across your parcel — watch Risk Level + Est. Loss update live.');
+  setStatus('<b>\uD83D\uDD25 Fire is spreading.</b> Watch flames propagate across your parcel.');
   drawOverlay();
   loop();
 });
-
-function gridHasBurning() {
-  if (!grid) return false;
-  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-    if (grid[y][x].state === STATE.BURNING) return true;
-  }
-  return false;
-}
-
-function resetSim(silent) {
-  running = false;
-  if (grid) for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-    grid[y][x].state = STATE.UNBURNED; grid[y][x].burnClock = 0;
-  }
-  ignitionX = null; ignitionY = null;
-  tickCount = 0; lastStructIgnitionTick = -1;
-  document.body.classList.remove('simulating');
-  const pauseBtn = document.getElementById('fab-pause');
-  if (pauseBtn) pauseBtn.innerHTML = '⏸ Pause';
-  const igniteBtn = document.getElementById('fab-ignite');
-  if (igniteBtn) igniteBtn.innerHTML = '🔥 Ignite Fire';
-  if (!silent) setStatus('Simulation reset. Press <b>🔥 Ignite Fire</b> to run again.');
-  drawOverlay();
-  updatePanels();
-  requestAnimationFrame(idleLoop);
-}
-
 document.getElementById('fab-pause').addEventListener('click', () => {
   running = !running;
   document.getElementById('fab-pause').innerHTML = running ? '⏸ Pause' : '▶ Resume';
   if (running) loop();
 });
 
-document.getElementById('fab-reset').addEventListener('click', () => { resetSim(false); });
+document.getElementById('fab-reset').addEventListener('click', () => {
+  running = false;
+  if (grid) for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    grid[y][x].state = STATE.UNBURNED; grid[y][x].burnClock = 0;
+  }
+  ignitionX = null; ignitionY = null;
+  tickCount = 0; lastStructIgnitionTick = -1;
+  running = false;
+  document.body.classList.remove('simulating');
+  document.getElementById('fab-pause').innerHTML = '\u23F8 Pause';
+  setStatus('Simulation reset. Click the map to set a new ignition, then press Ignite Fire (or just press Ignite and we\u2019ll pick an upwind spot for you).');
+  drawOverlay();
+  updatePanels();
+  requestAnimationFrame(idleLoop);
+});
 
 /* ---------- Loop ---------- */
 let lastFrame = 0, accum = 0;

@@ -209,37 +209,43 @@
   #overlay-canvas.interact { pointer-events: auto; cursor: crosshair; }
 
   .map-fab-bar {
-    position: absolute; bottom: 14px; left: 50%;
+    position: absolute; bottom: 18px; left: 50%;
     transform: translateX(-50%); z-index: 1000;
-    display: flex; gap: 6px;
-    background: rgba(255,255,255,0.95);
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.96);
     backdrop-filter: blur(10px);
     border: 1px solid var(--border-strong);
-    border-radius: 12px; padding: 6px;
+    border-radius: 999px; padding: 6px 10px 6px 6px;
     box-shadow: var(--shadow-lg);
   }
   .fab {
-    background: transparent; color: var(--text); border: 0;
-    padding: 8px 14px; border-radius: 8px;
+    background: transparent; color: var(--text-dim); border: 0;
+    padding: 8px 14px; border-radius: 999px;
     font-size: 13px; font-weight: 500; cursor: pointer;
     display: inline-flex; align-items: center; gap: 6px;
-    transition: background .15s;
+    transition: background .15s, color .15s;
   }
-  .fab:hover { background: var(--panel-2); }
+  .fab:hover { background: var(--panel-2); color: var(--text); }
   .fab.primary {
     background: linear-gradient(180deg, #ff8a2e, #e5670c);
-    color: #ffffff; font-weight: 600;
-    box-shadow: 0 2px 10px rgba(232,93,0,0.42), inset 0 -2px 0 rgba(0,0,0,0.12);
+    color: #ffffff !important; font-weight: 700; font-size: 16px;
+    padding: 14px 28px; border-radius: 999px;
+    box-shadow: 0 6px 22px rgba(232,93,0,0.55), inset 0 -2px 0 rgba(0,0,0,0.12);
+    animation: ignitePulse 1.8s ease-in-out infinite;
     transition: filter .15s, transform .1s, box-shadow .2s;
   }
-  .fab.primary:hover {
-    filter: brightness(1.06);
-    box-shadow: 0 4px 16px rgba(232,93,0,0.50), inset 0 -2px 0 rgba(0,0,0,0.12);
+  @keyframes ignitePulse {
+    0%, 100% { box-shadow: 0 6px 22px rgba(232,93,0,0.55), inset 0 -2px 0 rgba(0,0,0,0.12); transform: scale(1); }
+    50%      { box-shadow: 0 10px 30px rgba(255,120,40,0.85), 0 0 0 6px rgba(255,154,61,0.18), inset 0 -2px 0 rgba(0,0,0,0.12); transform: scale(1.03); }
   }
-  .fab.primary:active { transform: translateY(1px); }
+  .fab.primary:hover {
+    filter: brightness(1.08);
+  }
+  .fab.primary:active { transform: translateY(1px) scale(0.99); }
+  body.simulating .fab.primary { animation: none; }
   .fab.danger { color: var(--danger); }
   .fab.danger:hover { background: rgba(198,40,40,0.10); }
-  .fab[disabled] { opacity: 0.45; cursor: not-allowed; }
+  .fab[disabled] { opacity: 0.45; cursor: not-allowed; animation: none; }
 
   .map-status {
     position: absolute; top: 12px; left: 12px; z-index: 1000;
@@ -601,7 +607,7 @@
       <div id="leaflet-map"></div>
       <canvas id="overlay-canvas"></canvas>
       <div class="map-status" id="map-status">
-        <b>Step 1.</b> Search for your address above to locate your property.
+        Search an address above, or just press <b>🔥 Ignite Fire</b> to run a demo.
       </div>
       <div class="basemap-switch">
         <button data-b="satellite" class="active">Satellite</button>
@@ -609,8 +615,7 @@
         <button data-b="topo">Topo</button>
       </div>
       <div class="map-fab-bar">
-        <button class="fab" id="fab-place" disabled>📍 Place Home</button>
-        <button class="fab primary" id="fab-ignite" disabled>🔥 Ignite Fire</button>
+        <button class="fab primary" id="fab-ignite">🔥 Ignite Fire</button>
         <button class="fab" id="fab-pause" disabled>⏸ Pause</button>
         <button class="fab danger" id="fab-reset" disabled>↺ Reset</button>
       </div>
