@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EmberScope — Wildfire Risk for Your Property</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+  crossorigin=""></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+
+<style>
+  :root {
+    /* --- cream / light base --- */
+    --bg:        #f7f2e8;      /* page background: warm cream */
+    --bg-2:      #efe8da;      /* subtle panel tint */
+    --panel:     #ffffff;      /* solid white cards */
+    --panel-2:   #f4eddf;      /* secondary panels (metrics, pills) */
+    --panel-3:   #e9e0cf;      /* hover / tertiary */
+    --border:        rgba(40,30,15,0.08);
+    --border-strong: rgba(40,30,15,0.16);
+    --text:      #2a1f13;      /* rich dark brown-black */
+    --text-dim:  #544636;      /* secondary text */
+    --muted:     #8a7a65;      /* captions, helper text */
+    --accent:    #e85d00;      /* slightly deeper orange for contrast on cream */
+    --accent-2:  #b63f00;      /* darker orange for emphasis on cream */
+    --accent-soft: rgba(232,93,0,0.10);
+    --danger:  #c62828;
+    --ok:      #2e7d32;
+    --warn:    #b2771a;
+    --info:    #2361a9;
+    --shadow-sm: 0 1px 2px rgba(60,40,20,0.06);
+    --shadow-md: 0 4px 18px rgba(60,40,20,0.08);
+    --shadow-lg: 0 16px 48px rgba(60,40,20,0.14);
+    --radius: 14px;
+    --radius-sm: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(ellipse 1000px 500px at 15% 0%, rgba(255,200,140,0.25), transparent 60%),
+      radial-gradient(ellipse 800px 500px at 95% 100%, rgba(255,160,110,0.16), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; line-height: 1.55;
+    letter-spacing: 0.1px;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(60,40,20,0.18); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(60,40,20,0.32); }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(247,242,232,0.75) 100%);
+    position: sticky; top: 0; z-index: 1000;
+    backdrop-filter: saturate(140%) blur(10px);
+    -webkit-backdrop-filter: saturate(140%) blur(10px);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 17px; letter-spacing: 0.2px; color: var(--text);
+  }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: radial-gradient(circle at 30% 25%, #ffd066 0%, #ff7a1a 45%, #932d00 100%);
+    box-shadow: 0 2px 12px rgba(232,93,0,0.35), inset 0 -2px 4px rgba(0,0,0,0.3);
+  }
+  .brand small { font-weight: 400; color: var(--muted); margin-left: 6px; font-size: 12px; }
+
+  .search-wrap { flex: 1; max-width: 520px; position: relative; z-index: 10000; }
+  .search-input {
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    padding: 10px 14px 10px 38px;
+    border-radius: 10px;
+    font-size: 14px; outline: none;
+    box-shadow: var(--shadow-sm);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search-input::placeholder { color: var(--muted); }
+  .search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(232,93,0,0.18);
+  }
+  .search-icon {
+    position: absolute; left: 12px; top: 50%;
+    transform: translateY(-50%); color: var(--muted); pointer-events: none;
+  }
+  .search-results {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: #ffffff; border: 1px solid var(--border-strong);
+    border-radius: 12px; overflow: hidden;
+    box-shadow: var(--shadow-lg);
+    z-index: 10000;
+    max-height: 320px; overflow-y: auto;
+  }
+  .search-result {
+    padding: 11px 14px; cursor: pointer;
+    font-size: 13px; color: var(--text);
+    border-bottom: 1px solid var(--border);
+  }
+  .search-result:last-child { border-bottom: none; }
+  .search-result:hover { background: var(--panel-2); }
+  .search-result small { color: var(--muted); display: block; margin-top: 2px; font-size: 11px; }
+
+  .view-toggle {
+    display: inline-flex; border: 1px solid var(--border-strong);
+    border-radius: 10px; overflow: hidden; background: #ffffff;
+    box-shadow: var(--shadow-sm);
+  }
+  .view-toggle button {
+    background: transparent; border: 0; color: var(--text-dim);
+    padding: 9px 14px; cursor: pointer; font-size: 13px; font-weight: 500;
+    transition: background .15s, color .15s;
+  }
+  .view-toggle button:hover { color: var(--text); }
+  .view-toggle button.active {
+    background: linear-gradient(180deg, #ff8a2e 0%, #e5670c 100%);
+    color: #ffffff; font-weight: 600;
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 16px; padding: 16px 20px 40px;
+    max-width: 1700px; margin: 0 auto;
+  }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+
+  .map-card {
+    background: #ffffff; border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px;
+    display: flex; flex-direction: column; gap: 12px;
+    box-shadow: var(--shadow-md);
+  }
+  .map-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .map-title { font-weight: 600; font-size: 15px; color: var(--text); }
+  .map-title span { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
+  .map-wrap {
+    position: relative; height: 560px;
+    background: #e8dcc2;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  @media (max-width: 1100px) { .map-wrap { height: 440px; } }
+  #leaflet-map { width: 100%; height: 100%; background: #e8dcc2; }
+  #overlay-canvas {
+    position: absolute; top: 0; left: 0;
+    pointer-events: none; z-index: 500;
+    image-rendering: pixelated;
+    transition: opacity .2s;
+  }
+  #overlay-canvas.interact { pointer-events: auto; cursor: crosshair; }
+
+  .map-fab-bar {
+    position: absolute; bottom: 14px; left: 50%;
+    transform: translateX(-50%); z-index: 1000;
+    display: flex; gap: 6px;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px; padding: 6px;
+    box-shadow: var(--shadow-lg);
+  }
+  .fab {
+    background: transparent; color: var(--text); border: 0;
+    padding: 8px 14px; border-radius: 8px;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background .15s;
+  }
+  .fab:hover { background: var(--panel-2); }
+  .fab.primary {
+    background: linear-gradient(180deg, #ff8a2e, #e5670c);
+    color: #ffffff; font-weight: 600;
+    box-shadow: 0 2px 10px rgba(232,93,0,0.40), inset 0 -2px 0 rgba(0,0,0,0.12);
+    transition: filter .15s, transform .1s, box-shadow .2s;
+  }
+  .fab.primary:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 4px 16px rgba(232,93,0,0.48), inset 0 -2px 0 rgba(0,0,0,0.12);
+  }
+  .fab.primary:active { transform: translateY(1px); }
+  .fab.danger { color: var(--danger); }
+  .fab.danger:hover { background: rgba(198,40,40,0.10); }
+  .fab[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+  .map-status {
+    position: absolute; top: 12px; left: 12px; z-index: 1000;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 8px 12px;
+    font-size: 12px; color: var(--text-dim);
+    max-width: 300px; line-height: 1.5;
+    box-shadow: var(--shadow-md);
+  }
+  .map-status b { color: var(--text); }
+  body.simulating .map-status b {
+    color: var(--accent-2);
+    text-shadow: 0 0 12px rgba(232,93,0,0.35);
+  }
+
+  .basemap-switch {
+    position: absolute; top: 12px; right: 12px; z-index: 1000;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 4px;
+    display: flex; gap: 2px;
+    box-shadow: var(--shadow-md);
+  }
+  .basemap-switch button {
+    background: transparent; border: 0; color: var(--text-dim);
+    font-size: 11px; padding: 6px 10px;
+    border-radius: 7px; cursor: pointer;
+  }
+  .basemap-switch button:hover { background: var(--panel-2); color: var(--text); }
+  .basemap-switch button.active { background: var(--accent); color: #ffffff; font-weight: 600; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-dim); padding: 2px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border-strong); }
+
+  .sidebar { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .card {
+    background: #ffffff; border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+    box-shadow: var(--shadow-sm);
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+  .card h3 {
+    margin: 0 0 14px 0; font-size: 13px; font-weight: 600;
+    letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-dim);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card h3 .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent);
+  }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .field label b { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); height: 4px; }
+
+  .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .metric {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 11px 13px;
+    transition: background .2s, border-color .2s;
+  }
+  .metric:hover { background: #ffffff; border-color: var(--border-strong); }
+  .metric .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+  .metric .val { font-size: 20px; font-weight: 700; margin-top: 4px; letter-spacing: -0.3px; color: var(--text); }
+  .metric .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .risk-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; transition: background .3s, color .3s; }
+  .risk-low { background: rgba(46,125,50,0.14); color: var(--ok); }
+  .risk-med { background: rgba(178,119,26,0.18); color: var(--warn); }
+  .risk-high { background: rgba(198,40,40,0.15); color: var(--danger); }
+  .risk-extreme { background: var(--danger); color: #ffffff; }
+
+  .homeowner-summary { font-size: 14px; line-height: 1.6; color: var(--text); }
+  .homeowner-summary strong { color: var(--accent-2); }
+
+  .mitigation-list { list-style: none; padding: 0; margin: 0; }
+  .mitigation-list li {
+    padding: 11px 13px; margin-bottom: 8px;
+    background: var(--panel-2);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px; font-size: 13px; line-height: 1.55;
+  }
+  .mitigation-list li:last-child { margin-bottom: 0; }
+  .mitigation-list li .title { font-weight: 600; color: var(--text); }
+  .mitigation-list li .body { color: var(--text-dim); margin-top: 3px; }
+  .mitigation-list li .impact {
+    display: inline-block; font-size: 10px; color: var(--accent-2); font-weight: 700;
+    margin-top: 6px; text-transform: uppercase; letter-spacing: 0.6px;
+    padding: 3px 8px; background: var(--accent-soft); border-radius: 999px;
+  }
+
+  .goat-card {
+    background: linear-gradient(135deg, rgba(46,125,50,0.08), rgba(35,97,169,0.05));
+    border: 1px solid rgba(46,125,50,0.25);
+    border-radius: 12px; padding: 14px; margin-top: 10px;
+  }
+  .goat-card h4 { margin: 0 0 6px 0; font-size: 14px; display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text); }
+  .goat-card p { font-size: 13px; color: var(--text-dim); line-height: 1.55; margin: 4px 0 12px; }
+  .goat-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .goat-stat { background: rgba(255,255,255,0.85); border: 1px solid var(--border); border-radius: 8px; padding: 10px 6px; text-align: center; }
+  .goat-stat .n { font-size: 17px; font-weight: 700; color: var(--ok); letter-spacing: -0.3px; }
+  .goat-stat .l { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px; font-weight: 600; }
+
+  .pill-select { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill-select button {
+    flex: 1; min-width: 60px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text-dim); padding: 7px 12px;
+    border-radius: 999px; font-size: 12px; cursor: pointer;
+    transition: all .15s; font-weight: 500;
+  }
+  .pill-select button:hover { background: #ffffff; color: var(--text); border-color: var(--border-strong); }
+  .pill-select button.active { background: var(--accent); color: #ffffff; border-color: var(--accent); font-weight: 600; }
+
+  .pro-only, .homeowner-only { display: none; }
+  body.view-pro .pro-only { display: block; }
+  body.view-homeowner .homeowner-only { display: block; }
+
+  .compass {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: var(--panel-2); border: 1px solid var(--border);
+    position: relative; margin: 6px auto 0;
+  }
+  .compass::before {
+    content: "N"; position: absolute; top: 3px; left: 50%;
+    transform: translateX(-50%); font-size: 9px; color: var(--muted); font-weight: 600;
+  }
+  .compass .needle {
+    position: absolute; left: 50%; top: 50%;
+    width: 2px; height: 22px;
+    background: linear-gradient(to top, transparent, var(--accent));
+    transform-origin: bottom center;
+    transform: translate(-50%, -100%) rotate(0deg);
+    transition: transform 0.2s;
+  }
+  .compass .needle::before {
+    content: ""; position: absolute; top: -5px; left: -3px;
+    width: 8px; height: 8px; background: var(--accent);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+
+  .advanced-toggle {
+    font-size: 11px; color: var(--muted); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 8px; user-select: none;
+  }
+  .advanced-toggle:hover { color: var(--text-dim); }
+  .advanced-panel {
+    display: none; padding: 10px 12px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; margin-top: 8px;
+  }
+  .advanced-panel.open { display: block; }
+  .advanced-panel label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .advanced-panel input, .advanced-panel select {
+    width: 100%; background: #ffffff; border: 1px solid var(--border-strong);
+    color: var(--text); padding: 6px 9px; border-radius: 6px;
+    font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  footer { text-align: center; color: var(--muted); font-size: 11px; padding: 18px; border-top: 1px solid var(--border); }
+
+  .onboard-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(40,30,15,0.35); backdrop-filter: blur(6px);
+    z-index: 5000;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .onboard-backdrop.hide { display: none; }
+  .onboard-card {
+    background: #ffffff; border: 1px solid var(--border-strong);
+    border-radius: 16px; padding: 24px 26px; max-width: 460px;
+    box-shadow: var(--shadow-lg);
+  }
+  .onboard-card h2 { margin: 0 0 8px 0; font-size: 20px; display: flex; align-items: center; gap: 10px; color: var(--text); }
+  .onboard-card p { color: var(--text-dim); font-size: 14px; line-height: 1.6; margin: 0 0 16px 0; }
+  .onboard-steps { list-style: none; padding: 0; margin: 0 0 20px 0; display: flex; flex-direction: column; gap: 10px; }
+  .onboard-steps li { display: flex; gap: 12px; align-items: flex-start; font-size: 13px; color: var(--text-dim); }
+  .onboard-steps li .step-n {
+    flex: 0 0 24px; height: 24px; border-radius: 50%;
+    background: var(--accent); color: #ffffff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 12px;
+  }
+  .onboard-steps li b { color: var(--text); }
+  .onboard-steps li span { color: var(--text-dim); }
+  .onboard-card .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn {
+    background: var(--panel-2); border: 1px solid var(--border-strong);
+    color: var(--text); padding: 9px 16px; border-radius: 9px;
+    font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s;
+  }
+  .btn:hover { background: #ffffff; }
+  .btn-primary {
+    background: linear-gradient(180deg, #ff8a2e, #e5670c);
+    border-color: transparent; color: #ffffff; font-weight: 600;
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+
+  .leaflet-container { background: #e8dcc2 !important; font-family: inherit !important; }
+  .leaflet-control-zoom { border: 1px solid var(--border-strong) !important; }
+  .leaflet-control-zoom a {
+    background: rgba(255,255,255,0.95) !important; color: var(--text) !important;
+    border-color: var(--border) !important;
+  }
+  .leaflet-control-zoom a:hover { background: var(--panel-2) !important; }
+  .leaflet-control-attribution {
+    background: rgba(255,255,255,0.8) !important; color: var(--muted) !important;
+    border-radius: 6px !important; padding: 2px 8px !important;
+  }
+  .leaflet-control-attribution a { color: var(--text-dim) !important; }
+  .property-box {
+    stroke: #e85d00 !important; stroke-width: 2.5 !important;
+    fill: rgba(232,93,0,0.06) !important;
+    stroke-dasharray: 6 6 !important;
+  }
+
+  .wind-preview-host { position:absolute; inset:0; pointer-events:none; z-index:450; }
+</style>
+</head>
+<body class="view-homeowner">
+
+<div class="onboard-backdrop" id="onboard">
+  <div class="onboard-card">
+    <h2>🔥 Welcome to EmberScope</h2>
+    <p>See what a wildfire would do to your property — and what you can do about it.</p>
+    <ol class="onboard-steps">
+      <li><span class="step-n">1</span><span><b>Find your home.</b> Type your address in the search bar at the top.</span></li>
+      <li><span class="step-n">2</span><span><b>Shape your parcel.</b> Drag the handles on the orange box to match your property.</span></li>
+      <li><span class="step-n">3</span><span><b>Set fire-weather conditions</b> in the sidebar (wind, moisture, slope).</span></li>
+      <li><span class="step-n">4</span><span><b>Click the map to mark ignition</b>, then press <b>🔥 Ignite Fire</b>.</span></li>
+      <li><span class="step-n">5</span><span><b>Review risk, loss estimate, and mitigation</b> — including the goat grazing option.</span></li>
+    </ol>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="document.getElementById('onboard').classList.add('hide')">Get started</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark"></div>
+    EmberScope
+    <small>Wildfire risk, visualized</small>
+  </div>
+  <div class="search-wrap">
+    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input class="search-input" id="search" type="text" placeholder="Search your address, city, or zip…" autocomplete="off" />
+    <div class="search-results" id="search-results" style="display:none"></div>
+  </div>
+  <div class="view-toggle" role="tablist">
+    <button id="view-home" class="active">Homeowner</button>
+    <button id="view-pro">Insurance / Pro</button>
+  </div>
+</header>
+
+<main>
+  <section class="map-card">
+    <div class="map-header">
+      <div class="map-title">
+        Property Fire Simulation
+        <span id="parcel-meta">Search your address to get started</span>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:#6a8f4d"></div>Grass</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#3f6a38"></div>Shrub</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#1f3a1a"></div>Canopy</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#b79b7a"></div>Structure</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#ff6b2b"></div>Flame</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#2a2a2a"></div>Burned</div>
+      </div>
+    </div>
+    <div class="map-wrap">
+      <div id="leaflet-map"></div>
+      <canvas id="overlay-canvas"></canvas>
+      <div class="map-status" id="map-status">
+        <b>Step 1.</b> Search for your address above to locate your property.
+      </div>
+      <div class="basemap-switch">
+        <button data-b="satellite" class="active">Satellite</button>
+        <button data-b="hybrid">Hybrid</button>
+        <button data-b="topo">Topo</button>
+      </div>
+      <div class="map-fab-bar">
+        <button class="fab" id="fab-place" disabled>📍 Place Home</button>
+        <button class="fab primary" id="fab-ignite" disabled>🔥 Ignite Fire</button>
+        <button class="fab" id="fab-pause" disabled>⏸ Pause</button>
+        <button class="fab danger" id="fab-reset" disabled>↺ Reset</button>
+      </div>
+    </div>
+  </section>
+
+  <aside class="sidebar">
+    <div class="card">
+      <h3><span class="dot"></span>Fire Weather</h3>
+      <div class="field">
+        <label>Wind direction <b id="wind-dir-lbl">W origin (270°)</b></label>
+        <input type="range" id="wind-dir" min="0" max="359" value="270" />
+        <div class="compass"><div class="needle" id="compass-needle"></div></div>
+      </div>
+      <div class="field">
+        <label>Wind speed <b id="wind-speed-lbl">18 mph</b></label>
+        <input type="range" id="wind-speed" min="0" max="60" value="18" />
+      </div>
+      <div class="field">
+        <label>Fuel moisture <b id="moisture-lbl">8% (Very dry)</b></label>
+        <input type="range" id="moisture" min="3" max="30" value="8" />
+      </div>
+      <div class="field">
+        <label>Terrain steepness <b id="slope-lbl">Moderate</b></label>
+        <div class="pill-select" id="slope-pick">
+          <button data-v="0">Flat</button>
+          <button data-v="1" class="active">Moderate</button>
+          <button data-v="2">Steep</button>
+        </div>
+      </div>
+      <div class="advanced-toggle" id="adv-toggle">▸ Advanced (data sources)</div>
+      <div class="advanced-panel" id="adv-panel">
+        <div id="loc-context" style="font-size:12px;line-height:1.6;color:var(--text-dim);margin-bottom:10px;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.05)">
+          <div style="color:var(--text);margin-bottom:4px"><b>Live location context</b></div>
+          <div style="font-style:italic">Select an address to pull regional data.</div>
+        </div>
+        <label>Google Maps API key (optional)</label>
+        <input id="gmaps-key" type="text" placeholder="Leave blank to use free satellite" />
+        <label style="margin-top:8px">Fuel data source</label>
+        <select id="fuel-source">
+          <option value="synthetic">Synthetic + regional biome (active)</option>
+          <option value="open-meteo" selected>Open-Meteo live weather (active)</option>
+          <option value="lidar" disabled>LiDAR drone scan (upload pending)</option>
+          <option value="landfire" disabled>LANDFIRE fuel models (API pending)</option>
+        </select>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:8px;line-height:1.5">
+          Data layers in use: Open-Meteo (weather + elevation), Photon geocoder (region), ACS/Zillow state medians (home value), NIFC/USDA WUI index (regional fire-risk multiplier).
+        </div>
+      </div>
+    </div>
+
+    <div class="card homeowner-only">
+      <h3><span class="dot" style="background:var(--info)"></span>What happens to your home?</h3>
+      <div class="homeowner-summary" id="homeowner-text">
+        Place your property, set fire-weather conditions, and click <strong>🔥 Ignite Fire</strong> to see what a wildfire would do to your home.
+      </div>
+      <div class="metric-grid" style="margin-top:14px">
+        <div class="metric">
+          <div class="lbl">Risk Level</div>
+          <div class="val"><span class="risk-badge risk-med" id="risk-badge">—</span></div>
+        </div>
+        <div class="metric">
+          <div class="lbl">Est. Loss</div>
+          <div class="val" id="loss-val">—</div>
+          <div class="sub" id="loss-sub">Run a simulation</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card pro-only">
+      <h3><span class="dot" style="background:var(--info)"></span>Actuarial Metrics</h3>
+      <div class="metric-grid">
+        <div class="metric"><div class="lbl">Ignition Prob</div><div class="val" id="m-pign">—</div><div class="sub">Structure P<sub>ign</sub></div></div>
+        <div class="metric"><div class="lbl">Flame length</div><div class="val" id="m-flame">—</div><div class="sub">Peak near home</div></div>
+        <div class="metric"><div class="lbl">Rate of Spread</div><div class="val" id="m-ros">—</div><div class="sub">Head fire, ch/hr</div></div>
+        <div class="metric"><div class="lbl">Defensible Space</div><div class="val" id="m-ds">—</div><div class="sub">Zone 0–2 score</div></div>
+        <div class="metric"><div class="lbl">Ember Exposure</div><div class="val" id="m-ember">—</div><div class="sub">Downwind range</div></div>
+        <div class="metric"><div class="lbl">Time to Burn-over</div><div class="val" id="m-tbo">—</div><div class="sub">Ignition → structure</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3><span class="dot" style="background:var(--ok)"></span>Mitigation</h3>
+      <ul class="mitigation-list" id="mitigation-list"></ul>
+      <div class="goat-card">
+        <h4>🐐 Targeted Goat Grazing</h4>
+        <p>Goats clear brush and grass fuels that crews can't safely reach — no exhaust, no sparks, no ignition risk. Most effective in Zones 1 &amp; 2 (5–100 ft from home).</p>
+        <div class="goat-stats">
+          <div class="goat-stat"><div class="n" id="goa
