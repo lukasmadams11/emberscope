@@ -568,7 +568,7 @@ function generateScan(seed = Math.random()*1000) {
   grid = [];
   const bias = LOC_CONTEXT.fuelBias || {grass:0, shrub:0, tree:0};
   // Thresholds shift with biome: grasslands get more grass, conifer more tree, etc.
-  const tNone  = 0.30 - Math.max(0, bias.grass) * 0.3 - Math.max(0, bias.shrub) * 0.15 - Math.max(0, bias.tree) * 0.1;
+  const tNone  = 0.18 - Math.max(0, bias.grass) * 0.25 - Math.max(0, bias.shrub) * 0.10 - Math.max(0, bias.tree) * 0.08;
   const tGrass = 0.47 + bias.grass - Math.max(0, bias.shrub) * 0.2;
   const tShrub = 0.72 + bias.shrub - Math.max(0, bias.tree) * 0.2;
   for (let y = 0; y < ROWS; y++) {
@@ -621,10 +621,13 @@ function generateScan(seed = Math.random()*1000) {
 function cellColor(c) {
   if (c.state === STATE.BURNING) return burningColor(c);
   if (c.state === STATE.BURNED) {
-    // Ember afterglow decays briefly
-    const cool = Math.max(0, 1 - (c.burnClock - 6) * 0.05);
-    const v = Math.round(22 + cool * 20);
-    return 'rgb(' + v + ',' + v + ',' + (v - 4) + ')';
+    // Charred soil + fading ember glow. Much more visible against satellite
+    // tiles than near-black was. Starts warm, cools to brown-black over time.
+    const cool = Math.max(0, 1 - (c.burnClock - 8) * 0.03);
+    const r = Math.round(55 + cool * 110);
+    const g = Math.round(25 + cool * 45);
+    const b = Math.round(15 + cool * 15);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
   }
   if (c.state === STATE.IGNITING) return '#ffe680';
   return c.fuel.base;
@@ -843,14 +846,15 @@ function spreadProb(dx, dy, fuelVal, p) {
   const wx = Math.sin(dirRad), wy = -Math.cos(dirRad);
   const len = Math.sqrt(dx*dx + dy*dy) || 1;
   const nx = dx / len, ny = dy / len;
-  const align = nx*wx + ny*wy;                              // -1..+1, +1 = downwind
-  // Wind factor: downwind strongly boosted, upwind gets a floor so cross-wind
-  // backing fire still creeps. Units: wind_mph / 12 (was /20).
-  const wf = 1 + Math.max(0, align) * (p.windSpeed / 12) + Math.max(0, -align) * 0.15;
-  const mf = Math.max(0.20, 1 - (p.moisture - 3) / 25);
-  const sf = 1 + p.slope * 0.45 * Math.max(0, align);
-  // Base rate bumped 0.18 -> 0.26 so light-fuel ignitions reliably catch.
-  return Math.min(0.98, 0.26 * fuelVal * wf * mf * sf);
+  const align = nx*wx + ny*wy;                              // -1..+1, +1 downwind
+  // Wind term: strong downwind boost, small constant floor so a calm day still
+  // spreads slowly but NOT catastrophically. Tuned so 0mph ~ 60% of moderate.
+  const wf = 1 + Math.max(0, align) * (p.windSpeed / 9) + 0.05;
+  // Moisture: very dry (3%) -> full rate, damp (20%) -> ~22%, wet (30%) -> floor.
+  const mf = Math.max(0.18, 1 - (p.moisture - 3) / 22);
+  // Slope only helps downwind (uphill runs).
+  const sf = 1 + p.slope * 0.55 * Math.max(0, align);
+  return Math.min(0.98, 0.28 * fuelVal * wf * mf * sf);
 }
 
 function step() {
@@ -874,7 +878,7 @@ function step() {
             }
           }
         }
-        const dur = (c.fuel === FUEL.TREE) ? 10 : (c.fuel === FUEL.SHRUB) ? 7 : (c.fuel === FUEL.STRUCT) ? 14 : 4;
+        const dur = (c.fuel === FUEL.TREE) ? 14 : (c.fuel === FUEL.SHRUB) ? 10 : (c.fuel === FUEL.STRUCT) ? 18 : 7;
         if (c.burnClock > dur) c.state = STATE.BURNED;
       }
     }
@@ -1159,7 +1163,7 @@ document.getElementById('fab-ignite').addEventListener('click', () => {
 
   // Ignite a small cluster (radius 2 = ~13 cells) so a bad RNG roll on
   // one seed doesn't let the fire die instantly. Skip roads/homes/cleared.
-  igniteCluster(ignitionX, ignitionY, 2);
+  igniteCluster(ignitionX, ignitionY, 3);
   running = true;
   document.body.classList.add('simulating');
   lastFrame = 0; accum = 0;
